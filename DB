@@ -1,0 +1,83 @@
+-- ---------------------------------
+-- 1. Database Creation (if needed)
+-- ---------------------------------
+CREATE DATABASE IF NOT EXISTS scm_db;
+USE scm_db;
+
+-- ---------------------------------
+-- 2. Drop existing tables
+-- ---------------------------------
+-- Drop tables in reverse order of dependency
+DROP TABLE IF EXISTS alerts;
+DROP TABLE IF EXISTS predictions;
+DROP TABLE IF EXISTS inventory;
+
+-- ---------------------------------
+-- 3. Create INVENTORY Table
+--    (Core table for stock levels and pricing)
+-- ---------------------------------
+CREATE TABLE inventory (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_name VARCHAR(255) NOT NULL,
+    sku VARCHAR(100) UNIQUE NOT NULL,
+    stock_level INT NOT NULL DEFAULT 0,
+    unit_price DECIMAL(10, 2) NOT NULL,
+    reorder_point INT NOT NULL,  -- Static threshold for stock-out warnings
+    supplier_id INT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+-- ---------------------------------
+-- 4. Create PREDICTIONS Table
+--    (Table to store predictive analytics results for "High Risk Items")
+-- ---------------------------------
+CREATE TABLE predictions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT NOT NULL,
+    predicted_demand INT NOT NULL,
+    risk_level VARCHAR(50) NOT NULL, -- e.g., 'Low', 'Medium', 'High'
+    prediction_date DATE NOT NULL,
+    FOREIGN KEY (product_id) REFERENCES inventory(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- ---------------------------------
+-- 5. Create ALERTS Table
+--    (Table to store critical system-generated alerts)
+-- ---------------------------------
+CREATE TABLE alerts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    product_id INT, -- NULL for non-product specific alerts (e.g., system failure)
+    type VARCHAR(50) NOT NULL, -- e.g., 'Critical', 'Warning', 'Info'
+    message TEXT NOT NULL,
+    is_resolved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (product_id) REFERENCES inventory(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- ---------------------------------
+-- 6. Insert Sample Data
+-- ---------------------------------
+
+-- Sample Inventory Data
+INSERT INTO inventory (product_name, sku, stock_level, unit_price, reorder_point, supplier_id) VALUES
+('Microcontroller X20', 'MC-X20', 50, 4.99, 100, 101),
+('Capacitor Array Y', 'CA-Y01', 500, 0.15, 200, 102),
+('Resistor Pack Z', 'RP-Z05', 1200, 0.05, 1000, 103),
+('Sensor Module A', 'SM-A10', 50, 12.50, 50, 104),
+('Power Supply Unit', 'PS-U500', 80, 25.00, 150, 105),
+('Battery Lithium (LOW STOCK)', 'BT-LI22', 5, 8.00, 50, 106);
+
+-- Sample Predictions Data (Based on Inventory IDs 1-6)
+INSERT INTO predictions (product_id, predicted_demand, risk_level, prediction_date) VALUES
+(1, 150, 'High', CURDATE()),   -- MC-X20: High risk because stock (50) << demand (150)
+(2, 250, 'Medium', CURDATE()), -- CA-Y01: Medium risk
+(3, 800, 'Low', CURDATE()),    -- RP-Z05: Low risk
+(6, 60, 'High', CURDATE());    -- BT-LI22: High risk
+
+-- Sample Alerts Data (Critical Alerts based on low stock or high prediction risk)
+INSERT INTO alerts (product_id, type, message) VALUES
+(1, 'Critical', 'Stock-out imminent for Microcontroller X20 (Below Reorder Point: 100).'),
+(6, 'Critical', 'Predicted high demand for Battery Lithium will deplete stock in 3 days.'),
+(5, 'Warning', 'Power Supply Unit stock is nearing the safety margin.'),
+(NULL, 'Critical', 'System Failure: Connection to Supplier API 101 is down.');
